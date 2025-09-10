@@ -34,6 +34,7 @@ import torch
 from PIL import Image
 from diffusers import (
     AutoencoderKL,
+    AutoencoderTiny,
     DDIMScheduler,
     DiffusionPipeline,
     LCMScheduler,
@@ -84,9 +85,9 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
     Args:
         unet (`UNet2DConditionModel`):
             Conditional U-Net to denoise the prediction latent, conditioned on image latent.
-        vae (`AutoencoderKL`):
+        vae (`Union[AutoencoderKL, AutoencoderTiny]`):
             Variational Auto-Encoder (VAE) Model to encode and decode images and predictions
-            to and from latent representations.
+            to and from latent representations. Can be either AutoencoderKL or AutoencoderTiny.
         scheduler (`DDIMScheduler`):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents.
         text_encoder (`CLIPTextModel`):
@@ -111,7 +112,7 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
     def __init__(
         self,
         unet: UNet2DConditionModel,
-        vae: AutoencoderKL,
+        vae: Union[AutoencoderKL, AutoencoderTiny],
         scheduler: Union[DDIMScheduler, LCMScheduler],
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
@@ -452,12 +453,18 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         Returns:
             `torch.Tensor`: Image latent.
         """
-        # encode
-        h = self.vae.encoder(rgb_in)
-        moments = self.vae.quant_conv(h)
-        mean, logvar = torch.chunk(moments, 2, dim=1)
-        # scale latent
-        rgb_latent = mean * self.latent_scale_factor
+        # Check VAE type by class name for more reliable detection
+        if self.vae.__class__.__name__ == 'AutoencoderTiny':
+            # AutoencoderTiny path
+            encoded = self.vae.encode(rgb_in).latents
+            rgb_latent = encoded * self.latent_scale_factor
+        else:
+            # AutoencoderKL path
+            h = self.vae.encoder(rgb_in)
+            moments = self.vae.quant_conv(h)
+            mean, logvar = torch.chunk(moments, 2, dim=1)
+            # scale latent
+            rgb_latent = mean * self.latent_scale_factor
         return rgb_latent
 
     def decode_normals(self, normals_latent: torch.Tensor) -> torch.Tensor:
@@ -473,7 +480,12 @@ class MarigoldNormalsPipeline(DiffusionPipeline):
         """
         # scale latent
         normals_latent = normals_latent / self.latent_scale_factor
-        # decode
-        z = self.vae.post_quant_conv(normals_latent)
-        stacked = self.vae.decoder(z)
+        # Check VAE type by class name for more reliable detection
+        if self.vae.__class__.__name__ == 'AutoencoderTiny':
+            # AutoencoderTiny path
+            stacked = self.vae.decode(normals_latent).sample
+        else:
+            # AutoencoderKL path
+            z = self.vae.post_quant_conv(normals_latent)
+            stacked = self.vae.decoder(z)
         return stacked

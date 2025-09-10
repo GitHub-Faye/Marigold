@@ -38,6 +38,8 @@ from diffusers import (
     DiffusionPipeline,
     LCMScheduler,
     UNet2DConditionModel,
+
+    AutoencoderTiny
 )
 from diffusers.utils import BaseOutput
 from torch.utils.data import DataLoader, TensorDataset
@@ -85,9 +87,9 @@ class MarigoldDepthPipeline(DiffusionPipeline):
     Args:
         unet (`UNet2DConditionModel`):
             Conditional U-Net to denoise the prediction latent, conditioned on image latent.
-        vae (`AutoencoderKL`):
+        vae (`Union[AutoencoderKL, AutoencoderTiny]`):
             Variational Auto-Encoder (VAE) Model to encode and decode images and predictions
-            to and from latent representations.
+            to and from latent representations. Can be either AutoencoderKL or AutoencoderTiny.
         scheduler (`DDIMScheduler`):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents.
         text_encoder (`CLIPTextModel`):
@@ -115,12 +117,12 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             with varying optimal processing resolution values.
     """
 
-    latent_scale_factor = 0.18215
+    latent_scale_factor = 2
 
     def __init__(
         self,
         unet: UNet2DConditionModel,
-        vae: AutoencoderKL,
+        vae: Union[AutoencoderKL, AutoencoderTiny],
         scheduler: Union[DDIMScheduler, LCMScheduler],
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
@@ -487,12 +489,18 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         Returns:
             `torch.Tensor`: Image latent.
         """
-        # encode
-        h = self.vae.encoder(rgb_in)
-        moments = self.vae.quant_conv(h)
-        mean, logvar = torch.chunk(moments, 2, dim=1)
-        # scale latent
-        rgb_latent = mean * self.latent_scale_factor
+        # Check VAE type by class name for more reliable detection
+        if self.vae.__class__.__name__ == 'AutoencoderTiny':
+            # AutoencoderTiny path
+            encoded = self.vae.encode(rgb_in).latents
+            rgb_latent = encoded * self.latent_scale_factor
+        else:
+            # AutoencoderKL path
+            h = self.vae.encoder(rgb_in)
+            moments = self.vae.quant_conv(h)
+            mean, logvar = torch.chunk(moments, 2, dim=1)
+            # scale latent
+            rgb_latent = mean * self.latent_scale_factor
         return rgb_latent
 
     def decode_depth(self, depth_latent: torch.Tensor) -> torch.Tensor:
@@ -508,9 +516,16 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         """
         # scale latent
         depth_latent = depth_latent / self.latent_scale_factor
-        # decode
-        z = self.vae.post_quant_conv(depth_latent)
-        stacked = self.vae.decoder(z)
-        # mean of output channels
-        depth_mean = stacked.mean(dim=1, keepdim=True)
+        # Check VAE type by class name for more reliable detection
+        if self.vae.__class__.__name__ == 'AutoencoderTiny':
+            # AutoencoderTiny path
+            decoded = self.vae.decode(depth_latent).sample
+            # mean of output channels
+            depth_mean = decoded.mean(dim=1, keepdim=True)
+        else:
+            # AutoencoderKL path
+            z = self.vae.post_quant_conv(depth_latent)
+            stacked = self.vae.decoder(z)
+            # mean of output channels
+            depth_mean = stacked.mean(dim=1, keepdim=True)
         return depth_mean
