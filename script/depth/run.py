@@ -247,7 +247,6 @@ if "__main__" == __name__:
     # 替换VAE为madebyollin/taesd AutoencoderTiny
     vae_tiny = AutoencoderTiny.from_pretrained("/home/daria/deeplearning/Marigold/checkpoint/taesd ", torch_dtype=dtype)
     pipe.vae = vae_tiny
-    pipe.latent_scale_factor = vae_tiny.scaling_factor
     logging.info("已将VAE替换为 madebyollin/taesd AutoencoderTiny")
 
     # 尝试启用xformers内存高效注意力机制

@@ -34,12 +34,11 @@ import torch
 from PIL import Image
 from diffusers import (
     AutoencoderKL,
+    AutoencoderTiny,
     DDIMScheduler,
     DiffusionPipeline,
     LCMScheduler,
     UNet2DConditionModel,
-
-    AutoencoderTiny
 )
 from diffusers.utils import BaseOutput
 from torch.utils.data import DataLoader, TensorDataset
@@ -61,14 +60,18 @@ from .util.image_util import (
 
 class MarigoldDepthOutput(BaseOutput):
     """
+    Marigold单目深度估计管道的输出类。
     Output class for Marigold Monocular Depth Estimation pipeline.
 
     Args:
         depth_np (`np.ndarray`):
+            预测的深度图，深度值范围为[0, 1]。
             Predicted depth map, with depth values in the range of [0, 1].
         depth_colored (`PIL.Image.Image`):
+            着色深度图，形状为[H, W, 3]，值在[0, 255]范围内。
             Colorized depth map, with the shape of [H, W, 3] and values in [0, 255].
         uncertainty (`None` or `np.ndarray`):
+            来自集成的未校准不确定性（MAD，中位绝对偏差）。
             Uncalibrated uncertainty(MAD, median absolute deviation) coming from ensembling.
     """
 
@@ -79,50 +82,61 @@ class MarigoldDepthOutput(BaseOutput):
 
 class MarigoldDepthPipeline(DiffusionPipeline):
     """
+    Marigold单目深度估计管道：https://marigoldcomputervision.github.io。
     Pipeline for Marigold Monocular Depth Estimation: https://marigoldcomputervision.github.io.
 
+    此模型继承自[`DiffusionPipeline`]。查看超类文档了解库为所有管道实现的通用方法（如下载、保存、在特定设备上运行等）。
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
         unet (`UNet2DConditionModel`):
+            条件U-Net，用于对预测潜在表示进行去噪，以图像潜在表示为条件。
             Conditional U-Net to denoise the prediction latent, conditioned on image latent.
         vae (`Union[AutoencoderKL, AutoencoderTiny]`):
+            变分自编码器（VAE）模型，用于将图像和预测编码和解码为潜在表示。可以是AutoencoderKL或AutoencoderTiny。
             Variational Auto-Encoder (VAE) Model to encode and decode images and predictions
             to and from latent representations. Can be either AutoencoderKL or AutoencoderTiny.
         scheduler (`DDIMScheduler`):
+            与`unet`结合使用的调度器，用于对编码的图像潜在表示进行去噪。
             A scheduler to be used in combination with `unet` to denoise the encoded image latents.
         text_encoder (`CLIPTextModel`):
+            文本编码器，用于空文本嵌入。
             Text-encoder, for empty text embedding.
         tokenizer (`CLIPTokenizer`):
+            CLIP分词器。
             CLIP tokenizer.
         scale_invariant (`bool`, *optional*):
+            模型属性，指定预测的深度图是否具有尺度不变性。此值必须在模型配置中设置。
             A model property specifying whether the predicted depth maps are scale-invariant. This value must be set in
             the model config. When used together with the `shift_invariant=True` flag, the model is also called
             "affine-invariant". NB: overriding this value is not supported.
         shift_invariant (`bool`, *optional*):
+            模型属性，指定预测的深度图是否具有平移不变性。此值必须在模型配置中设置。
             A model property specifying whether the predicted depth maps are shift-invariant. This value must be set in
             the model config. When used together with the `scale_invariant=True` flag, the model is also called
             "affine-invariant". NB: overriding this value is not supported.
         default_denoising_steps (`int`, *optional*):
+            生成合理质量预测所需的最少去噪扩散步数。此值必须在模型配置中设置。
             The minimum number of denoising diffusion steps that are required to produce a prediction of reasonable
             quality with the given model. This value must be set in the model config. When the pipeline is called
             without explicitly setting `num_inference_steps`, the default value is used. This is required to ensure
             reasonable results with various model flavors compatible with the pipeline, such as those relying on very
             short denoising schedules (`LCMScheduler`) and those with full diffusion schedules (`DDIMScheduler`).
         default_processing_resolution (`int`, *optional*):
+            管道`processing_resolution`参数的推荐值。此值必须在模型配置中设置。
             The recommended value of the `processing_resolution` parameter of the pipeline. This value must be set in
             the model config. When the pipeline is called without explicitly setting `processing_resolution`, the
             default value is used. This is required to ensure reasonable results with various model flavors trained
             with varying optimal processing resolution values.
     """
 
-    latent_scale_factor = 2
+    latent_scale_factor = 0.18215  # AutoencoderKL的默认缩放因子 / default scaling factor for AutoencoderKL 
 
     def __init__(
         self,
         unet: UNet2DConditionModel,
-        vae: Union[AutoencoderKL, AutoencoderTiny],
+        vae: AutoencoderKL,
         scheduler: Union[DDIMScheduler, LCMScheduler],
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
@@ -132,6 +146,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         default_processing_resolution: Optional[int] = None,
     ):
         super().__init__()
+        # 注册所有模型组件 / Register all model components
         self.register_modules(
             unet=unet,
             vae=vae,
@@ -139,6 +154,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             text_encoder=text_encoder,
             tokenizer=tokenizer,
         )
+        # 注册配置参数 / Register configuration parameters
         self.register_to_config(
             scale_invariant=scale_invariant,
             shift_invariant=shift_invariant,
@@ -146,11 +162,13 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             default_processing_resolution=default_processing_resolution,
         )
 
+        # 保存配置属性 / Store configuration attributes
         self.scale_invariant = scale_invariant
         self.shift_invariant = shift_invariant
         self.default_denoising_steps = default_denoising_steps
         self.default_processing_resolution = default_processing_resolution
 
+        # 空文本嵌入缓存 / Empty text embedding cache
         self.empty_text_embed = None
 
     @torch.no_grad()
@@ -212,7 +230,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             - **uncertainty** (`None` or `np.ndarray`) Uncalibrated uncertainty(MAD, median absolute deviation)
                     coming from ensembling. None if `ensemble_size = 1`
         """
-        # Model-specific optimal default values leading to fast and reasonable results.
+        # 模型特定的最优默认值，可获得快速且合理的结果 / Model-specific optimal default values
         if denoising_steps is None:
             denoising_steps = self.default_denoising_steps
         if processing_res is None:
@@ -221,16 +239,16 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         assert processing_res >= 0
         assert ensemble_size >= 1
 
-        # Check if denoising step is reasonable
+        # 检查去噪步数是否合理 / Check if denoising step is reasonable
         self._check_inference_step(denoising_steps)
 
         resample_method: InterpolationMode = get_tv_resample_method(resample_method)
 
-        # ----------------- Image Preprocess -----------------
-        # Convert to torch tensor
+        # ----------------- 图像预处理 / Image Preprocess -----------------
+        # 转换为torch张量 / Convert to torch tensor
         if isinstance(input_image, Image.Image):
             input_image = input_image.convert("RGB")
-            # convert to torch tensor [H, W, rgb] -> [rgb, H, W]
+            # 转换为torch张量 [H, W, rgb] -> [rgb, H, W] / convert to torch tensor
             rgb = pil_to_tensor(input_image)
             rgb = rgb.unsqueeze(0)  # [1, rgb, H, W]
         elif isinstance(input_image, torch.Tensor):
@@ -242,7 +260,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             4 == rgb.dim() and 3 == input_size[-3]
         ), f"Wrong input shape {input_size}, expected [1, rgb, H, W]"
 
-        # Resize image
+        # 调整图像大小 / Resize image
         if processing_res > 0:
             rgb = resize_max_res(
                 rgb,
@@ -250,13 +268,13 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 resample_method=resample_method,
             )
 
-        # Normalize rgb values
+        # 标准化RGB值 / Normalize rgb values
         rgb_norm: torch.Tensor = rgb / 255.0 * 2.0 - 1.0  #  [0, 255] -> [-1, 1]
         rgb_norm = rgb_norm.to(self.dtype)
         assert rgb_norm.min() >= -1.0 and rgb_norm.max() <= 1.0
 
-        # ----------------- Predicting depth -----------------
-        # Batch repeated input image
+        # ----------------- 预测深度 / Predicting depth -----------------
+        # 批量重复输入图像 / Batch repeated input image
         duplicated_rgb = rgb_norm.expand(ensemble_size, -1, -1, -1)
         single_rgb_dataset = TensorDataset(duplicated_rgb)
         if batch_size > 0:
@@ -272,7 +290,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             single_rgb_dataset, batch_size=_bs, shuffle=False
         )
 
-        # Predict depth maps (batched)
+        # 批量预测深度图 / Predict depth maps (batched)
         target_pred_ls = []
         if show_progress_bar:
             iterable = tqdm(
@@ -290,10 +308,11 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             )
             target_pred_ls.append(target_pred_raw.detach())
         target_preds = torch.concat(target_pred_ls, dim=0)
-        torch.cuda.empty_cache()  # clear vram cache for ensembling
+        torch.cuda.empty_cache()  # 清空显存缓存以进行集成 / clear vram cache for ensembling
 
-        # ----------------- Test-time ensembling -----------------
+        # ----------------- 测试时集成 / Test-time ensembling -----------------
         if ensemble_size > 1:
+            # 集成多个深度预测 / Ensemble multiple depth predictions
             final_pred, pred_uncert = ensemble_depth(
                 target_preds,
                 scale_invariant=self.scale_invariant,
@@ -304,7 +323,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             final_pred = target_preds
             pred_uncert = None
 
-        # Resize back to original resolution
+        # 调整回原始分辨率 / Resize back to original resolution
         if match_input_res:
             final_pred = resize(
                 final_pred,
@@ -313,16 +332,16 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                 antialias=True,
             )
 
-        # Convert to numpy
+        # 转换为numpy数组 / Convert to numpy
         final_pred = final_pred.squeeze()
         final_pred = final_pred.cpu().numpy()
         if pred_uncert is not None:
             pred_uncert = pred_uncert.squeeze().cpu().numpy()
 
-        # Clip output range
+        # 裁剪输出范围 / Clip output range
         final_pred = final_pred.clip(0, 1)
 
-        # Colorize
+        # 着色处理 / Colorize
         if color_map is not None:
             depth_colored = colorize_depth_maps(
                 final_pred, 0, 1, cmap=color_map
@@ -341,9 +360,10 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
     def _check_inference_step(self, n_step: int) -> None:
         """
+        检查去噪步数是否合理
         Check if denoising step is reasonable
         Args:
-            n_step (`int`): denoising steps
+            n_step (`int`): 去噪步数 / denoising steps
         """
         assert n_step >= 1
 
@@ -382,9 +402,10 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
     def encode_empty_text(self):
         """
+        为空提示编码文本嵌入
         Encode text embedding for empty prompt
         """
-        prompt = ""
+        prompt = ""  # 空提示 / Empty prompt
         text_inputs = self.tokenizer(
             prompt,
             padding="do_not_pad",
@@ -393,6 +414,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids.to(self.text_encoder.device)
+        # 生成并缓存空文本嵌入 / Generate and cache empty text embedding
         self.empty_text_embed = self.text_encoder(text_input_ids)[0].to(self.dtype)
 
     @torch.no_grad()
@@ -404,31 +426,37 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         show_pbar: bool,
     ) -> torch.Tensor:
         """
+        执行单次预测，不进行集成。
         Perform a single prediction without ensembling.
 
         Args:
             rgb_in (`torch.Tensor`):
+                输入RGB图像。
                 Input RGB image.
             num_inference_steps (`int`):
-                Number of diffusion denoisign steps (DDIM) during inference.
+                推理期间的扩散去噪步数（DDIM）。
+                Number of diffusion denoising steps (DDIM) during inference.
             show_pbar (`bool`):
+                显示扩散去噪的进度条。
                 Display a progress bar of diffusion denoising.
             generator (`torch.Generator`)
+                用于初始噪声生成的随机生成器。
                 Random generator for initial noise generation.
         Returns:
+            `torch.Tensor`: 预测目标。
             `torch.Tensor`: Predicted targets.
         """
         device = self.device
         rgb_in = rgb_in.to(device)
 
-        # Set timesteps
+        # 设置时间步 / Set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps  # [T]
 
-        # Encode image
+        # 编码图像 / Encode image
         rgb_latent = self.encode_rgb(rgb_in)  # [B, 4, h, w]
 
-        # Noisy latent for outputs
+        # 用于输出的噪声潜在表示 / Noisy latent for outputs
         target_latent = torch.randn(
             rgb_latent.shape,
             device=device,
@@ -480,52 +508,60 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
     def encode_rgb(self, rgb_in: torch.Tensor) -> torch.Tensor:
         """
+        将RGB图像编码为潜在表示。
         Encode RGB image into latent.
 
         Args:
             rgb_in (`torch.Tensor`):
+                要编码的输入RGB图像。
                 Input RGB image to be encoded.
 
         Returns:
+            `torch.Tensor`: 图像潜在表示。
             `torch.Tensor`: Image latent.
         """
-        # Check VAE type by class name for more reliable detection
+        # 通过类名检查VAE类型以获得更可靠的检测 / Check VAE type by class name for more reliable detection
         if self.vae.__class__.__name__ == 'AutoencoderTiny':
-            # AutoencoderTiny path
-            encoded = self.vae.encode(rgb_in).latents
-            rgb_latent = encoded * self.latent_scale_factor
+            # AutoencoderTiny路径 / AutoencoderTiny path
+            rgb_latent = self.vae.encode(rgb_in).latents * self.vae.config.scaling_factor
+            # TAESD scaling_factor=1.0, AutoencoderKL scaling_factor=0.18215
         else:
-            # AutoencoderKL path
+            # AutoencoderKL路径 / AutoencoderKL path
             h = self.vae.encoder(rgb_in)
             moments = self.vae.quant_conv(h)
             mean, logvar = torch.chunk(moments, 2, dim=1)
-            # scale latent
+            # 缩放潜在表示 / scale latent
             rgb_latent = mean * self.latent_scale_factor
         return rgb_latent
 
     def decode_depth(self, depth_latent: torch.Tensor) -> torch.Tensor:
         """
+        将深度潜在表示解码为深度图。
         Decode depth latent into depth map.
 
         Args:
             depth_latent (`torch.Tensor`):
+                要解码的深度潜在表示。
                 Depth latent to be decoded.
 
         Returns:
+            `torch.Tensor`: 解码的深度图。
             `torch.Tensor`: Decoded depth map.
         """
-        # scale latent
-        depth_latent = depth_latent / self.latent_scale_factor
-        # Check VAE type by class name for more reliable detection
+
+        # 通过类名检查VAE类型以获得更可靠的检测 / Check VAE type by class name for more reliable detection
         if self.vae.__class__.__name__ == 'AutoencoderTiny':
-            # AutoencoderTiny path
-            decoded = self.vae.decode(depth_latent).sample
-            # mean of output channels
+            # AutoencoderTiny路径 / AutoencoderTiny path
+            # AutoencoderKL scaling_factor=0.18215, TAESD scaling_factor=1.0
+            depth_latent_taesd = depth_latent / self.vae.config.scaling_factor 
+            decoded = self.vae.decode(depth_latent_taesd).sample
             depth_mean = decoded.mean(dim=1, keepdim=True)
         else:
-            # AutoencoderKL path
+            # scale latent
+            depth_latent = depth_latent / self.latent_scale_factor
+            # AutoencoderKL路径 / AutoencoderKL path
             z = self.vae.post_quant_conv(depth_latent)
             stacked = self.vae.decoder(z)
-            # mean of output channels
+            # 输出通道的均值 / mean of output channels
             depth_mean = stacked.mean(dim=1, keepdim=True)
         return depth_mean
