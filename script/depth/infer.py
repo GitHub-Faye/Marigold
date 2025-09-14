@@ -221,9 +221,9 @@ if "__main__" == __name__:
     )
     
     # 替换VAE为madebyollin/taesd AutoencoderTiny
-    vae_tiny = AutoencoderTiny.from_pretrained("/home/daria/deeplearning/Marigold/checkpoint/taesd ", torch_dtype=dtype)
-    pipe.vae = vae_tiny
-    logging.info("已将VAE替换为 madebyollin/taesd AutoencoderTiny")
+    # vae_tiny = AutoencoderTiny.from_pretrained("/home/daria/deeplearning/Marigold/checkpoint/taesd ", torch_dtype=dtype)
+    # pipe.vae = vae_tiny
+    # logging.info("已将VAE替换为 madebyollin/taesd AutoencoderTiny")
     
     try:
         pipe.enable_xformers_memory_efficient_attention()

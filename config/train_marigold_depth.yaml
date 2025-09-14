@@ -1,94 +1,110 @@
+# Marigold深度估计模型训练配置文件
+# Marigold Depth Estimation Training Configuration
+
+# 基础配置文件导入 / Base configuration imports
 base_config:
-- config/logging.yaml
-- config/wandb.yaml
-- config/dataset_depth/dataset_train.yaml
-- config/dataset_depth/dataset_val.yaml
-- config/dataset_depth/dataset_vis.yaml
-- config/model_sdv2.yaml
+- config/logging.yaml                           # 日志配置 / Logging configuration
+- config/wandb.yaml                            # Weights & Biases实验追踪配置 / W&B experiment tracking
+- config/dataset_depth/dataset_train.yaml     # 训练数据集配置 / Training dataset configuration
+- config/dataset_depth/dataset_val.yaml       # 验证数据集配置 / Validation dataset configuration
+- config/dataset_depth/dataset_vis.yaml       # 可视化数据集配置 / Visualization dataset configuration
+- config/model_sdv2.yaml                       # Stable Diffusion v2模型配置 / SD v2 model configuration
 
+# 推理管道配置 / Inference pipeline configuration
 pipeline:
-  name: MarigoldDepthPipeline
+  name: MarigoldDepthPipeline                  # 管道类名 / Pipeline class name
   kwargs:
-    scale_invariant: true
-    shift_invariant: true
-    default_denoising_steps: 4
-    default_processing_resolution: 768
+    scale_invariant: true                      # 尺度不变性：预测深度图具有尺度不变性 / Scale invariant depth predictions
+    shift_invariant: true                      # 平移不变性：预测深度图具有平移不变性 / Shift invariant depth predictions
+    default_denoising_steps: 4                 # 默认去噪步数：快速推理模式 / Default denoising steps for fast inference
+    default_processing_resolution: 768         # 默认处理分辨率：推理时的图像分辨率 / Default processing resolution for inference
 
+# 深度数据归一化配置 / Depth data normalization configuration  
 depth_normalization:
-  type: scale_shift_depth
-  clip: true
-  norm_min: -1.0
-  norm_max: 1.0
-  min_max_quantile: 0.02
+  type: scale_shift_depth                      # 归一化类型：缩放平移归一化 / Normalization type: scale-shift normalization
+  clip: true                                   # 是否裁剪异常值 / Whether to clip outliers
+  norm_min: -1.0                              # 归一化最小值 / Normalization minimum value
+  norm_max: 1.0                               # 归一化最大值 / Normalization maximum value
+  min_max_quantile: 0.02                      # 最小最大分位数：用于鲁棒归一化 / Min-max quantile for robust normalization
 
+# 数据增强配置 / Data augmentation configuration
 augmentation:
-  lr_flip_p: 0.5
+  lr_flip_p: 0.5                              # 左右翻转概率：50%概率进行水平翻转 / Left-right flip probability
 
+# 数据加载器配置 / Dataloader configuration
 dataloader:
-  num_workers: 2
-  effective_batch_size: 32
-  max_train_batch_size: 2
-  seed: 2024  # to ensure continuity when resuming from checkpoint
+  num_workers: 2                              # 数据加载进程数 / Number of data loading workers
+  effective_batch_size: 32                    # 有效批次大小：通过梯度累积实现 / Effective batch size via gradient accumulation
+  max_train_batch_size: 2                     # 最大训练批次大小：GPU内存限制 / Maximum training batch size due to GPU memory
+  seed: 2024                                  # 随机种子：确保从检查点恢复时的连续性 / Random seed for continuity when resuming
 
+# 训练器配置 / Trainer configuration
 trainer:
-  name: MarigoldDepthTrainer
-  training_noise_scheduler:
-    pretrained_path: stable-diffusion-2
-  init_seed: 2024  # use null to train w/o seeding
-  save_period: 50
-  backup_period: 2000
-  validation_period: 500
-  visualization_period: 1000
+  name: MarigoldDepthTrainer                  # 训练器类名 / Trainer class name
+  training_noise_scheduler:                   # 训练噪声调度器配置 / Training noise scheduler configuration
+    pretrained_path: stable-diffusion-2      # 预训练模型路径 / Pretrained model path
+  init_seed: 2024                            # 初始化随机种子，null表示不使用种子 / Initialization seed, use null for no seeding
+  save_period: 50                            # 模型保存周期：每50步保存一次 / Model save period: save every 50 steps
+  backup_period: 2000                        # 备份周期：每2000步创建备份 / Backup period: create backup every 2000 steps
+  validation_period: 500                     # 验证周期：每500步进行验证 / Validation period: validate every 500 steps
+  visualization_period: 1000                 # 可视化周期：每1000步生成可视化结果 / Visualization period: generate visualizations every 1000 steps
 
+# 多分辨率噪声配置 / Multi-resolution noise configuration
 multi_res_noise:
-  strength: 0.9
-  annealed: true
-  downscale_strategy: original
+  strength: 0.9                              # 噪声强度：控制多分辨率噪声的影响程度 / Noise strength: controls multi-res noise influence
+  annealed: true                             # 噪声退火：训练过程中逐渐减少噪声 / Noise annealing: gradually reduce noise during training
+  downscale_strategy: original               # 下采样策略：保持原始下采样方法 / Downscaling strategy: keep original method
 
-gt_depth_type: depth_raw_norm
-gt_mask_type: valid_mask_raw
+# 真实深度数据类型配置 / Ground truth depth data type configuration
+gt_depth_type: depth_raw_norm                # 真实深度类型：原始归一化深度 / GT depth type: raw normalized depth
+gt_mask_type: valid_mask_raw                 # 真实掩码类型：原始有效掩码 / GT mask type: raw valid mask
 
-max_epoch: 10000  # a large enough number
-max_iter: 30000  # usually converges at around 20k
+# 训练迭代配置 / Training iteration configuration
+max_epoch: 10000                             # 最大训练轮数：足够大的数字确保训练完成 / Maximum epochs: large enough number
+max_iter: 30000                              # 最大迭代次数：通常在20k左右收敛 / Maximum iterations: usually converges around 20k
 
+# 优化器配置 / Optimizer configuration
 optimizer:
-  name: Adam
+  name: Adam                                  # 优化器名称：Adam优化器 / Optimizer name: Adam optimizer
 
+# 损失函数配置 / Loss function configuration
 loss:
-  name: mse_loss
+  name: mse_loss                             # 损失函数名称：均方误差损失 / Loss function name: Mean Squared Error loss
   kwargs:
-    reduction: mean
+    reduction: mean                          # 损失约简方式：取平均值 / Loss reduction method: take mean
 
-lr: 3.0e-05
-lr_scheduler:
-  name: IterExponential
+# 学习率和调度器配置 / Learning rate and scheduler configuration
+lr: 3.0e-05                                 # 初始学习率：较小的学习率保护预训练权重 / Initial learning rate: small LR to protect pretrained weights
+lr_scheduler:                               # 学习率调度器配置 / Learning rate scheduler configuration
+  name: IterExponential                     # 调度器名称：指数衰减调度器 / Scheduler name: exponential decay scheduler
   kwargs:
-    total_iter: 25000
-    final_ratio: 0.01
-    warmup_steps: 100
+    total_iter: 25000                       # 总迭代次数：学习率衰减的总步数 / Total iterations for LR decay
+    final_ratio: 0.01                       # 最终学习率比例：最终学习率=初始学习率×0.01 / Final LR ratio: final_LR = initial_LR × 0.01
+    warmup_steps: 100                       # 预热步数：前100步线性增加学习率 / Warmup steps: linearly increase LR for first 100 steps
 
-# Light setting for the in-training validation and visualization
+# 训练中验证和可视化的轻量设置 / Light settings for in-training validation and visualization
 validation:
-  denoising_steps: 1
-  ensemble_size: 1
-  processing_res: 0
-  match_input_res: false
-  resample_method: bilinear
-  main_val_metric: abs_relative_difference
-  main_val_metric_goal: minimize
-  init_seed: 2024
+  denoising_steps: 1                        # 验证时去噪步数：快速验证用 / Denoising steps for validation: for fast validation
+  ensemble_size: 1                          # 集成大小：验证时不使用集成 / Ensemble size: no ensemble for validation
+  processing_res: 0                         # 处理分辨率：0表示使用原始分辨率 / Processing resolution: 0 means original resolution
+  match_input_res: false                    # 是否匹配输入分辨率 / Whether to match input resolution
+  resample_method: bilinear                 # 重采样方法：双线性插值 / Resampling method: bilinear interpolation
+  main_val_metric: abs_relative_difference   # 主要验证指标：绝对相对误差 / Main validation metric: absolute relative difference
+  main_val_metric_goal: minimize            # 验证指标目标：最小化误差 / Validation metric goal: minimize error
+  init_seed: 2024                           # 验证随机种子 / Validation random seed
 
+# 评估配置 / Evaluation configuration
 eval:
-  alignment: least_square
-  align_max_res: null
-  eval_metrics:
-  - abs_relative_difference
-  - squared_relative_difference
-  - rmse_linear
-  - rmse_log
-  - log10
-  - delta1_acc
-  - delta2_acc
-  - delta3_acc
-  - i_rmse
-  - silog_rmse
+  alignment: least_square                    # 对齐方法：最小二乘对齐 / Alignment method: least square alignment
+  align_max_res: null                       # 对齐最大分辨率：null表示不限制 / Alignment max resolution: null means no limit
+  eval_metrics:                             # 评估指标列表 / List of evaluation metrics
+  - abs_relative_difference                 # 绝对相对误差 / Absolute relative difference
+  - squared_relative_difference             # 平方相对误差 / Squared relative difference  
+  - rmse_linear                            # 线性均方根误差 / Root mean squared error (linear)
+  - rmse_log                               # 对数均方根误差 / Root mean squared error (logarithmic)
+  - log10                                  # Log10误差 / Log10 error
+  - delta1_acc                             # Delta1准确率：δ<1.25的像素比例 / Delta1 accuracy: ratio of pixels with δ<1.25
+  - delta2_acc                             # Delta2准确率：δ<1.25²的像素比例 / Delta2 accuracy: ratio of pixels with δ<1.25²
+  - delta3_acc                             # Delta3准确率：δ<1.25³的像素比例 / Delta3 accuracy: ratio of pixels with δ<1.25³
+  - i_rmse                                 # 逆深度均方根误差 / Inverse depth RMSE
+  - silog_rmse                             # 尺度不变对数均方根误差 / Scale-invariant logarithmic RMSE

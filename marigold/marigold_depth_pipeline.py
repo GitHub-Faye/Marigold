@@ -34,11 +34,11 @@ import torch
 from PIL import Image
 from diffusers import (
     AutoencoderKL,
-    AutoencoderTiny,
     DDIMScheduler,
     DiffusionPipeline,
     LCMScheduler,
     UNet2DConditionModel,
+    AutoencoderTiny
 )
 from diffusers.utils import BaseOutput
 from torch.utils.data import DataLoader, TensorDataset
@@ -71,7 +71,7 @@ class MarigoldDepthOutput(BaseOutput):
             着色深度图，形状为[H, W, 3]，值在[0, 255]范围内。
             Colorized depth map, with the shape of [H, W, 3] and values in [0, 255].
         uncertainty (`None` or `np.ndarray`):
-            来自集成的未校准不确定性（MAD，中位绝对偏差）。
+            来自集成的未校准不确定性（MAD，中位绝对偏差）。 uncertainty 计算为 多个预测 与 所有预测之间的中位数，的差值，的绝对值，的中位数
             Uncalibrated uncertainty(MAD, median absolute deviation) coming from ensembling.
     """
 
@@ -136,7 +136,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
     def __init__(
         self,
         unet: UNet2DConditionModel,
-        vae: AutoencoderKL,
+        vae: Union[AutoencoderKL, AutoencoderTiny],
         scheduler: Union[DDIMScheduler, LCMScheduler],
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
