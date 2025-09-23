@@ -8,7 +8,7 @@
 /wandb
 /venv
 /cache
-
+/diffusers
 **/.ipynb_checkpoints/
 .vscode/
 .idea

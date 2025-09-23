@@ -1,5 +1,19 @@
 dataset:
   val:
+  # 验证集（validation）配置列表。
+  # 说明：
+  # - 列表中第一个数据集通常用于计算主要评估指标（main eval metric）。
+  # - 每个条目包含如下字段：
+  #   name: 数据集内部标识（代码中用于选择数据集实现）
+  #   disp_name: 显示名称或用于保存日志/输出的标识
+  #   dir: 数据存档文件或数据所在的相对目录
+  #   filenames: 包含样本路径/文件名的列表文件（相对路径）
+  #   resize_to_hw: 可选，目标图像高度和宽度 [H, W]
+  #   eigen_valid_mask: 可选，针对 NYU/某些数据集是否使用 eigen 验证掩码
+  #   kitti_bm_crop: 可选，针对 KITTI 是否使用 benchmark 裁剪
+  #   valid_mask_crop: 可选，指定有效掩码裁剪方式（例如：eigen）
+
+  # - 以下几个被注释掉的示例条目保留为参考（原始配置示例）
   # - name: hypersim_depth
   #   disp_name: hypersim_depth_val
   #   dir: hypersim/hypersim_processed_val.tar
@@ -21,25 +35,32 @@ dataset:
   #   kitti_bm_crop: true
   #   valid_mask_crop: eigen
 
-  # Smaller subsets for faster validation during training
-  # The first dataset is used to calculate main eval metric.
+  # 较小的子集（用于训练期间更快的验证）
+  # 注意：第一个数据集通常用于计算主要评估指标。
   - name: hypersim_depth
-    disp_name: hypersim_depth_val_small_80
+    # disp_name: hypersim_depth_val_small_80
+    disp_name: filename_list_val_filtered
     dir: hypersim/hypersim_processed_val.tar
-    filenames: data_split/hypersim_depth/filename_list_val_filtered_small_80.txt
+    # filenames: data_split/hypersim_depth/filename_list_val_filtered_small_80.txt
+    filenames: data_split/hypersim_depth/filename_list_val_filtered.txt
+    # resize_to_hw: 对图像缩放到指定高/宽，格式为 [height, width]
     resize_to_hw:
     - 480
     - 640
 
   - name: nyu_depth
+    # disp_name: 显示名称，通常用于日志/文件名
     disp_name: nyu_depth_train_small_100
     dir: nyuv2/nyu_labeled_extracted.tar
     filenames: data_split/nyu_depth/labeled/filename_list_train_small_100.txt
+    # eigen_valid_mask: 对 NYU 数据集是否使用 eigen 风格的有效像素掩码
     eigen_valid_mask: true
 
   - name: kitti_depth
     disp_name: kitti_depth_val_from_train_sub_100
     dir: kitti/kitti_sampled_val_800.tar
     filenames: data_split/kitti_depth/eigen_val_from_train_sub_100.txt
+    # kitti_bm_crop: 是否对 KITTI 使用 benchmark 裁剪（布尔）
     kitti_bm_crop: true
+    # valid_mask_crop: 指定有效掩码裁剪类型（例如：eigen）
     valid_mask_crop: eigen

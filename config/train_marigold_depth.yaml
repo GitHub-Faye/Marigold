@@ -42,7 +42,7 @@ dataloader:
 trainer:
   name: MarigoldDepthTrainer                  # 训练器类名 / Trainer class name
   training_noise_scheduler:                   # 训练噪声调度器配置 / Training noise scheduler configuration
-    pretrained_path: stable-diffusion-2      # 预训练模型路径 / Pretrained model path
+    pretrained_path: marigold_with_bk_unet      # 预训练模型路径 / Pretrained model path
   init_seed: 2024                            # 初始化随机种子，null表示不使用种子 / Initialization seed, use null for no seeding
   save_period: 50                            # 模型保存周期：每50步保存一次 / Model save period: save every 50 steps
   backup_period: 2000                        # 备份周期：每2000步创建备份 / Backup period: create backup every 2000 steps
